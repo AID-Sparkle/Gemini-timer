@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>発表会用タイマー＆SEツール</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: #2a2a2a;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 { margin-top: 0; font-size: 24px; color: #00adb5; }
+        .timer-display {
+            font-size: 80px;
+            font-family: monospace;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #eeeeee;
+        }
+        .btn {
+            font-size: 18px;
+            padding: 12px 24px;
+            margin: 5px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .btn-start { background-color: #393e46; color: #00adb5; border: 2px solid #00adb5; }
+        .btn-start:hover { background-color: #00adb5; color: #fff; }
+        .btn-stop { background-color: #ff2e63; color: #fff; }
+        .btn-stop:hover { background-color: #e02454; }
+        .btn-reset { background-color: #4e54c8; color: #fff; }
+        .btn-reset:hover { background-color: #3f44b3; }
+        
+        .se-section {
+            margin-top: 40px;
+            border-top: 1px solid #393e46;
+            padding-top: 30px;
+        }
+        .se-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .btn-se {
+            background-color: #393e46;
+            color: #eeeeee;
+            border: 1px solid #4e54c8;
+            font-size: 16px;
+            padding: 20px;
+        }
+        .btn-se:hover { background-color: #4e54c8; }
+        .btn-se:active { transform: scale(0.98); }
+        .hint { color: #888; font-size: 12px; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Presentation Timer & Sound Board</h1>
+    
+    <!-- ストップウォッチ部分 -->
+    <div class="timer-display" id="display">00:00.0</div>
+    <div>
+        <button class="btn btn-start" id="startBtn" onclick="startTimer()">スタート</button>
+        <button class="btn btn-stop" onclick="stopTimer()">ストップ</button>
+        <button class="btn btn-reset" onclick="resetTimer()">リセット</button>
+    </div>
+
+    <!-- 効果音ポン出し部分 -->
+    <div class="se-section">
+        <h3>効果音（キーボードの1〜4キーでも鳴らせます）</h3>
+        <div class="se-grid">
+            <button class="btn btn-se" onclick="playSE('ping')">1. ピンポン (正解/注目)</button>
+            <button class="btn btn-se" onclick="playSE('boo')">2. ブブー (不正解/警告)</button>
+            <button class="btn btn-se" onclick="playSE('cymbal')">3. ジャジャーン (登場/結果)</button>
+            <button class="btn btn-se" onclick="playSE('clap')">4. 拍手 (賞賛/終了)</button>
+        </div>
+        <p class="hint">※初回クリック時にブラウザの音源生成を許可するため、数秒のズレが発生する場合があります。</p>
+    </div>
+</div>
+
+<script>
+// タイマー用変数
+let startTime;
+let elapsedTime = 0;
+let timerInterval;
+
+function updateTime() {
+    const time = Date.now() - startTime + elapsedTime;
+    const mins = Math.floor(time / 60000).toString().padStart(2, '0');
+    const secs = Math.floor((time % 60000) / 1000).toString().padStart(2, '0');
+    const msecs = Math.floor((time % 1000) / 100).toString();
+    document.getElementById('display').textContent = `${mins}:${secs}.${msecs}`;
+}
+
+function startTimer() {
+    if (!timerInterval) {
+        startTime = Date.now();
+        timerInterval = setInterval(updateTime, 100);
+        document.getElementById('startBtn').textContent = '計測中...';
+    }
+}
+
+function stopTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        elapsedTime += Date.now() - startTime;
+        document.getElementById('startBtn').textContent = '再開';
+    }
+}
+
+function resetTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    elapsedTime = 0;
+    document.getElementById('display').textContent = '00:00.0';
+    document.getElementById('startBtn').textContent = 'スタート';
+}
+
+// Web Audio API を使った即時効果音生成（外部ファイル不要）
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSE(type) {
+    // ユーザー操作のコンテキストをアクティブにする
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+
+    const now = audioCtx.currentTime;
+
+    if (type === 'ping') {
+        // ピンポン
+        playTone(523.25, now, 0.15); // ド
+        playTone(659.25, now + 0.12, 0.4); // ミ
+    } else if (type === 'boo') {
+        // ブブー
+        playOscillator('sawtooth', 140, now, 0.15);
+        playOscillator('sawtooth', 135, now + 0.2, 0.4);
+    } else if (type === 'cymbal') {
+        // ジャジャーン（簡易ノイズ＋金属音風）
+        playTone(392.00, now, 0.5, 'triangle');
+        playTone(587.33, now, 0.5, 'sawtooth');
+        playNoise(now, 0.6);
+    } else if (type === 'clap') {
+        // 拍手（バラつかせた短いノイズの連続）
+        for (let i = 0; i < 15; i++) {
+            playNoise(now + (i * 0.08) + Math.random()*0.03, 0.06);
+        }
+    }
+}
+
+function playTone(freq, start, duration, type = 'sine') {
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, start);
+    gainNode.gain.setValueAtTime(0.3, start);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, start + duration);
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + duration);
+}
+
+function playOscillator(type, freq, start, duration) {
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, start);
+    gainNode.gain.setValueAtTime(0.2, start);
+    gainNode.gain.linearRampToValueAtTime(0.001, start + duration);
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + duration);
+}
+
+function playNoise(start, duration) {
+    const bufferSize = audioCtx.sampleRate * duration;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1000;
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0.15, start);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, start + duration);
+    noise.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    noise.start(start);
+    noise.stop(start + duration);
+}
+
+// キーボードショートカット
+window.addEventListener('keydown', (e) => {
+    if (e.key === '1') playSE('ping');
+    if (e.key === '2') playSE('boo');
+    if (e.key === '3') playSE('cymbal');
+    if (e.key === '4') playSE('clap');
+});
+</script>
+</body>
+</html>
