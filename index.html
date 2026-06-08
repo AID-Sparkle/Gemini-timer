@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>発表会用タイマー＆SEツール</title>
+    <title>発表会用タイマー＆SEツール（記録機能付き）</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -71,7 +71,41 @@
         }
         .btn-se:hover { background-color: #4e54c8; }
         .btn-se:active { transform: scale(0.98); }
-        .hint { color: #888; font-size: 12px; margin-top: 15px; }
+        
+        /* 記録ログ用のスタイル */
+        .log-section {
+            margin-top: 30px;
+            border-top: 1px solid #393e46;
+            padding-top: 20px;
+            text-align: left;
+        }
+        .log-section h3 {
+            text-align: center;
+            color: #00adb5;
+            margin-bottom: 10px;
+        }
+        .log-list {
+            list-style: none;
+            padding: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #202020;
+            border-radius: 8px;
+            border: 1px solid #393e46;
+        }
+        .log-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #2a2a2a;
+            font-family: monospace;
+            font-size: 15px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .log-item:last-child { border-bottom: none; }
+        .log-time { color: #00adb5; font-weight: bold; }
+        .log-name { color: #eeeeee; }
+        
+        .hint { color: #888; font-size: 12px; margin-top: 15px; text-align: center; }
     </style>
 </head>
 <body>
@@ -79,7 +113,6 @@
 <div class="container">
     <h1>Presentation Timer & Sound Board</h1>
     
-    <!-- ストップウォッチ部分 -->
     <div class="timer-display" id="display">00:00.0</div>
     <div>
         <button class="btn btn-start" id="startBtn" onclick="startTimer()">スタート</button>
@@ -87,17 +120,23 @@
         <button class="btn btn-reset" onclick="resetTimer()">リセット</button>
     </div>
 
-    <!-- 効果音ポン出し部分 -->
     <div class="se-section">
-        <h3>効果音（キーボードの1〜4キーでも鳴らせます）</h3>
+        <h3>効果音（キーボードの1〜4キー）</h3>
         <div class="se-grid">
-            <button class="btn btn-se" onclick="playSE('ping')">1. ピンポン (正解/注目)</button>
-            <button class="btn btn-se" onclick="playSE('boo')">2. ブブー (不正解/警告)</button>
-            <button class="btn btn-se" onclick="playSE('cymbal')">3. ジャジャーン (登場/結果)</button>
-            <button class="btn btn-se" onclick="playSE('clap')">4. 拍手 (賞賛/終了)</button>
+            <button class="btn btn-se" onclick="playSE('ping', 'ピンポン (正解)')">1. ピンポン (正解)</button>
+            <button class="btn btn-se" onclick="playSE('boo', 'ブブー (不正解)')">2. ブブー (不正解)</button>
+            <button class="btn btn-se" onclick="playSE('cymbal', 'ジャジャーン')">3. ジャジャーン</button>
+            <button class="btn btn-se" onclick="playSE('clap', '拍手')">4. 拍手</button>
         </div>
-        <p class="hint">※初回クリック時にブラウザの音源生成を許可するため、数秒のズレが発生する場合があります。</p>
     </div>
+
+    <div class="log-section">
+        <h3>音源トリガー履歴 (タイムスタンプ)</h3>
+        <ul class="log-list" id="logList">
+            </ul>
+    </div>
+    
+    <p class="hint">※スマホの場合は、最初に画面のどこかを1度タップしてからご使用ください。</p>
 </div>
 
 <script>
@@ -105,13 +144,15 @@
 let startTime;
 let elapsedTime = 0;
 let timerInterval;
+let currentFormattedTime = "00:00.0"; // 現在のタイムを保持
 
 function updateTime() {
     const time = Date.now() - startTime + elapsedTime;
     const mins = Math.floor(time / 60000).toString().padStart(2, '0');
     const secs = Math.floor((time % 60000) / 1000).toString().padStart(2, '0');
     const msecs = Math.floor((time % 1000) / 100).toString();
-    document.getElementById('display').textContent = `${mins}:${secs}.${msecs}`;
+    currentFormattedTime = `${mins}:${secs}.${msecs}`;
+    document.getElementById('display').textContent = currentFormattedTime;
 }
 
 function startTimer() {
@@ -135,40 +176,52 @@ function resetTimer() {
     clearInterval(timerInterval);
     timerInterval = null;
     elapsedTime = 0;
+    currentFormattedTime = "00:00.0";
     document.getElementById('display').textContent = '00:00.0';
     document.getElementById('startBtn').textContent = 'スタート';
+    document.getElementById('logList').innerHTML = ''; // ログもリセット
 }
 
-// Web Audio API を使った即時効果音生成（外部ファイル不要）
+// Web Audio API
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-function playSE(type) {
-    // ユーザー操作のコンテキストをアクティブにする
+function playSE(type, displayName) {
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
 
-    const now = audioCtx.currentTime;
+    // 音を鳴らした時の時間をログに追加
+    addLog(displayName);
 
+    const now = audioCtx.currentTime;
     if (type === 'ping') {
-        // ピンポン
-        playTone(523.25, now, 0.15); // ド
-        playTone(659.25, now + 0.12, 0.4); // ミ
+        playTone(523.25, now, 0.15);
+        playTone(659.25, now + 0.12, 0.4);
     } else if (type === 'boo') {
-        // ブブー
         playOscillator('sawtooth', 140, now, 0.15);
         playOscillator('sawtooth', 135, now + 0.2, 0.4);
     } else if (type === 'cymbal') {
-        // ジャジャーン（簡易ノイズ＋金属音風）
         playTone(392.00, now, 0.5, 'triangle');
         playTone(587.33, now, 0.5, 'sawtooth');
         playNoise(now, 0.6);
     } else if (type === 'clap') {
-        // 拍手（バラつかせた短いノイズの連続）
         for (let i = 0; i < 15; i++) {
             playNoise(now + (i * 0.08) + Math.random()*0.03, 0.06);
         }
     }
+}
+
+// ログに記録を追加する関数
+function addLog(name) {
+    const logList = document.getElementById('logList');
+    const li = document.createElement('li');
+    li.className = 'log-item';
+    
+    // 現在のタイマーの時間を取得して表示
+    li.innerHTML = `<span class="log-name">${name}</span><span class="log-time">[ ${currentFormattedTime} ]</span>`;
+    
+    // 最新の記録が一番上に来るように追加
+    logList.insertBefore(li, logList.firstChild);
 }
 
 function playTone(freq, start, duration, type = 'sine') {
@@ -184,6 +237,7 @@ function playTone(freq, start, duration, type = 'sine') {
     osc.stop(start + duration);
 }
 
+// (中略) 以下のオーディオ生成関数は前回と同様です
 function playOscillator(type, freq, start, duration) {
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
@@ -221,10 +275,10 @@ function playNoise(start, duration) {
 
 // キーボードショートカット
 window.addEventListener('keydown', (e) => {
-    if (e.key === '1') playSE('ping');
-    if (e.key === '2') playSE('boo');
-    if (e.key === '3') playSE('cymbal');
-    if (e.key === '4') playSE('clap');
+    if (e.key === '1') playSE('ping', 'ピンポン (正解)');
+    if (e.key === '2') playSE('boo', 'ブブー (不正解)');
+    if (e.key === '3') playSE('cymbal', 'ジャジャーン');
+    if (e.key === '4') playSE('clap', '拍手');
 });
 </script>
 </body>
